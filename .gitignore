@@ -1,0 +1,14 @@
+.gradle/
+build/
+bin/
+!gradle/wrapper/gradle-wrapper.jar
+.idea/
+*.iml
+*.log
+.DS_Store
+# Local secrets (Discord bot token + guild ids) — never committed.
+*.local.env
+application-local.yml
+application-local.yaml
+# Server deploy secrets: the real .env with the bot token (.env.example is committed).
+.env

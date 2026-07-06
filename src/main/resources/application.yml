@@ -1,0 +1,37 @@
+server:
+  # Internal port the osparty-api instances call. Published only on the private network in production.
+  port: ${SERVER_PORT:8090}
+
+spring:
+  application:
+    name: osparty-discord
+
+app:
+  # Shared secret the API must send as the X-Internal-Token header. Blank = auth disabled (dev only).
+  internal-token: ${DISCORD_INTERNAL_TOKEN:}
+  discord:
+    # Bot token — inject from the environment/secret store, NEVER commit it. Required to start.
+    token: ${DISCORD_TOKEN:}
+    # The single guild the bot operates in, and the category new party channels are created under
+    # (0 = create at the guild root). Both are Discord snowflake ids.
+    guild-id: ${DISCORD_GUILD_ID:0}
+    category-id: ${DISCORD_CATEGORY_ID:0}
+    # Invite lifetime (seconds; default 24h) and max uses (0 = unlimited).
+    invite-max-age-seconds: ${DISCORD_INVITE_MAX_AGE_SECONDS:86400}
+    invite-max-uses: ${DISCORD_INVITE_MAX_USES:0}
+
+# Actuator on the same port; /actuator is exempt from the internal-token check (see InternalAuthFilter)
+# so Prometheus can scrape it. Only health + the Prometheus endpoint are exposed.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    net.osparty.discord: INFO

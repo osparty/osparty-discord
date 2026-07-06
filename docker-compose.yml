@@ -1,0 +1,23 @@
+services:
+  discord-bot:
+    # Image is built + pushed to GHCR by the deploy workflow; the server pulls it (see IMAGE_TAG).
+    # For a purely local build instead, run: docker compose build (uses the Dockerfile in this dir).
+    image: ghcr.io/osparty/osparty-discord:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DISCORD_INTERNAL_TOKEN: "${DISCORD_INTERNAL_TOKEN:-}"
+      DISCORD_TOKEN: "${DISCORD_TOKEN:-}"
+      DISCORD_GUILD_ID: "${DISCORD_GUILD_ID:-0}"
+      DISCORD_CATEGORY_ID: "${DISCORD_CATEGORY_ID:-0}"
+      DISCORD_INVITE_MAX_AGE_SECONDS: "${DISCORD_INVITE_MAX_AGE_SECONDS:-86400}"
+      DISCORD_INVITE_MAX_USES: "${DISCORD_INVITE_MAX_USES:-0}"
+      SERVER_PORT: "8090"
+    # Published on the host so the API instances (this box + the remote nodes) reach it over the private
+    # network. In production, bind this to the MAIN server's PRIVATE interface only and firewall it, e.g.
+    #   ports: ["10.0.0.1:8090:8090"]
+    # Locally, the API container reaches it via host.docker.internal:8090.
+    ports:
+      - "8090:8090"
+    restart: unless-stopped

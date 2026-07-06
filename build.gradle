@@ -1,0 +1,47 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.6'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'net.osparty'
+// Overridable from CI (e.g. -PappVersion=1.2.3, set from the git tag); defaults to this value for
+// local builds so the jar manifest carries the real version.
+version = findProperty('appVersion') ?: '0.1.0'
+description = 'Discord voice-channel provisioning service for OSParty (extracted from osparty-api)'
+
+java {
+    // Compile to 17 bytecode; runs on any JDK 17+ (the dev box may have a newer JDK).
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Internal REST API the osparty-api instances call to provision/tear down voice channels.
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Monitoring: Actuator exposes health + a Prometheus scrape endpoint (JVM + our own metrics),
+    // scraped by the same Prometheus that scrapes the API. See application.yml.
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    // The single JDA gateway connection lives HERE now (moved out of the API). Audio (opus) is unused.
+    implementation('net.dv8tion:JDA:5.2.1') {
+        exclude module: 'opus-java'
+    }
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// Stable output name so the Dockerfile can COPY build/libs/app.jar.
+tasks.named('bootJar') {
+    archiveFileName = 'app.jar'
+}
