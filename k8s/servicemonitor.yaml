@@ -1,0 +1,17 @@
+# Prometheus scrape target (JVM + health), replacing the old static 10.0.0.2:8090 entry in the API
+# repo's monitoring/prometheus.yml. Picked up by the cluster's kube-prometheus-stack (installed with
+# serviceMonitorSelectorNilUsesHelmValues: false). /actuator is exempt from the internal-token check.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: osparty-discord
+  labels:
+    app: osparty-discord
+spec:
+  selector:
+    matchLabels:
+      app: osparty-discord
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 15s

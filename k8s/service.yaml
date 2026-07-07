@@ -1,0 +1,15 @@
+# In-cluster address for the bot: the API reaches it at http://osparty-discord:8090 (its
+# DISCORD_SERVICE_URL) — replaces the private-IP published port 10.0.0.2:8090. Never exposed publicly.
+apiVersion: v1
+kind: Service
+metadata:
+  name: osparty-discord
+  labels:
+    app: osparty-discord
+spec:
+  selector:
+    app: osparty-discord
+  ports:
+    - name: http
+      port: 8090
+      targetPort: http

@@ -7,7 +7,7 @@ plugins {
 group = 'net.osparty'
 // Overridable from CI (e.g. -PappVersion=1.2.3, set from the git tag); defaults to this value for
 // local builds so the jar manifest carries the real version.
-version = findProperty('appVersion') ?: '0.1.0'
+version = findProperty('appVersion') ?: '1.0.0'
 description = 'Discord voice-channel provisioning service for OSParty (extracted from osparty-api)'
 
 java {

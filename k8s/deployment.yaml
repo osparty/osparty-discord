@@ -1,0 +1,60 @@
+# The Discord voice-channel service in the OSParty k3s cluster — replaces the docker-compose stack on
+# api01. Deliberately a SINGLETON: this service owns the single JDA gateway connection, so replicas
+# stays 1 and the strategy is Recreate (never two bot sessions side by side, not even mid-rollout;
+# the seconds of downtime per deploy are fine — the API's voice provisioning degrades gracefully).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: osparty-discord
+  labels:
+    app: osparty-discord
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: osparty-discord
+  template:
+    metadata:
+      labels:
+        app: osparty-discord
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull   # already exists in the osparty namespace (created for the API)
+      containers:
+        - name: bot
+          image: ghcr.io/osparty/osparty-discord:latest   # tag pinned per-deploy by CI
+          ports:
+            - name: http    # internal API for osparty-api + actuator (health/prometheus), same port
+              containerPort: 8090
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=50.0"
+          # DISCORD_TOKEN, DISCORD_INTERNAL_TOKEN, DISCORD_GUILD_ID, DISCORD_CATEGORY_ID — created once
+          # from the old compose .env on api01 (see k8s/README.md). Never committed.
+          envFrom:
+            - secretRef:
+                name: osparty-discord-env
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 768Mi

@@ -14,10 +14,11 @@ services:
       DISCORD_INVITE_MAX_AGE_SECONDS: "${DISCORD_INVITE_MAX_AGE_SECONDS:-86400}"
       DISCORD_INVITE_MAX_USES: "${DISCORD_INVITE_MAX_USES:-0}"
       SERVER_PORT: "8090"
-    # Published on the host so the API instances (this box + the remote nodes) reach it over the private
-    # network. In production, bind this to the MAIN server's PRIVATE interface only and firewall it, e.g.
-    #   ports: ["10.0.0.1:8090:8090"]
-    # Locally, the API container reaches it via host.docker.internal:8090.
+    # In production set BOT_BIND_IP to MAIN's PRIVATE IP in .env, so the port is reachable by the API
+    # instances (this box + the remote nodes) over the private network only, never public. Left unset it
+    # binds all interfaces (fine locally / behind a host firewall).
     ports:
-      - "8090:8090"
+      - target: 8090
+        published: 8090
+        host_ip: "${BOT_BIND_IP:-0.0.0.0}"
     restart: unless-stopped

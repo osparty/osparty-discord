@@ -1,0 +1,16 @@
+# Deploys into the SAME namespace as the API (the bot is an internal backend of it). The namespace and
+# the ghcr-pull imagePullSecret already exist there — created by the API repo's setup (k8s/README.md in
+# ospartyapi).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: osparty
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - servicemonitor.yaml
+
+images:
+  - name: ghcr.io/osparty/osparty-discord
+    newTag: latest   # overwritten by CI with the release version

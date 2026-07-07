@@ -1,0 +1,172 @@
+name: Deploy Discord bot (Kubernetes)
+
+# k3s deploy with automatic semver versioning — the successor to deploy.yml (compose-on-MAIN). Same
+# pattern as ospartyapi's deploy-k8s.yml: compute version (latest v*.*.* tag patch+1, or 1.0.0 if no
+# tags), build + push the image, ONE SSH to api01 to apply the rendered manifests, then tag + release
+# only after the rollout succeeded. Minor/major bumps: manual run with an explicit version.
+#
+# The bot deploys into the `osparty` namespace as a SINGLETON (Recreate strategy — one JDA gateway
+# session, a few seconds of downtime per deploy is by design).
+#
+# GO-LIVE: uncomment the `push: branches: [main]` trigger below and delete deploy.yml once the k8s bot
+# is verified and the compose bot stack on api01 is stopped.
+#
+# Required secrets (already set for the compose deploy): API_SERVER_ADDRESS (api01), SSH_USER, SSH_KEY,
+# optional SSH_PORT. GHCR_USERNAME/GHCR_TOKEN are not used at deploy time — the cluster pulls via the
+# `ghcr-pull` imagePullSecret in the osparty namespace.
+on:
+  # push:
+  #   branches:
+  #     - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Explicit version (e.g. 1.1.0 for a minor bump, or an old version to redeploy). Empty = auto patch bump.'
+        required: false
+
+permissions:
+  contents: write   # push the release tag + create the GitHub release
+  packages: write   # push the image to GHCR
+
+concurrency:
+  group: deploy-discord-k8s
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/osparty/osparty-discord
+  DEPLOY_DIR: osparty-discord   # directory on api01, under the SSH user's home
+
+jobs:
+  # ---- Compute the version, build + push the image once ------------------------------------------
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history: the version is derived from the latest tag
+
+      - name: Resolve version (auto patch bump)
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            echo "Using explicit version: $VERSION"
+          else
+            LATEST=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+            if [ -z "$LATEST" ]; then
+              VERSION="1.0.0"
+              echo "No version tags yet — starting at $VERSION"
+            else
+              VERSION=$(echo "${LATEST#v}" | awk -F. '{printf "%d.%d.%d", $1, $2, $3 + 1}')
+              echo "Latest tag $LATEST -> bumping patch to $VERSION"
+            fi
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Build and test
+        run: ./gradlew --no-daemon clean test bootJar -PappVersion=${{ steps.version.outputs.version }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE }}:latest
+
+  # ---- Render the manifests with the pinned tag and apply on api01 -------------------------------
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Render manifests (image pinned to this version)
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          cd k8s
+          kustomize edit set image ${IMAGE}=${IMAGE}:${VERSION}
+          kustomize build . -o "${GITHUB_WORKSPACE}/k8s-bot.yaml"
+          echo "Rendered image refs:"; grep 'image:' "${GITHUB_WORKSPACE}/k8s-bot.yaml"
+
+      - name: Copy rendered manifests to api01
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.API_SERVER_ADDRESS }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          source: k8s-bot.yaml
+          target: ${{ env.DEPLOY_DIR }}
+          overwrite: true
+
+      - name: Apply + wait for rollout
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_DIR: ${{ env.DEPLOY_DIR }}
+          VERSION: ${{ needs.build.outputs.version }}
+        with:
+          host: ${{ secrets.API_SERVER_ADDRESS }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          envs: DEPLOY_DIR,VERSION
+          script: |
+            set -euo pipefail
+            kubectl apply -f "$DEPLOY_DIR/k8s-bot.yaml"
+            kubectl -n osparty rollout status deployment/osparty-discord --timeout=300s
+            echo "Deployed osparty-discord ${VERSION} to namespace osparty"
+
+  # ---- Tag + release AFTER the rollout succeeded, so failed deploys never consume a version ------
+  release:
+    needs: [build, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Tag this commit as v${{ needs.build.outputs.version }}
+        id: tag
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
+            echo "Tag v${VERSION} already exists (redeploy of an existing version) — skipping tag + release."
+            echo "created=false" >> "$GITHUB_OUTPUT"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "v${VERSION}" "${GITHUB_SHA}"
+            git push origin "v${VERSION}"
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub release
+        if: steps.tag.outputs.created == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.build.outputs.version }}
+          name: v${{ needs.build.outputs.version }}
+          generate_release_notes: true
