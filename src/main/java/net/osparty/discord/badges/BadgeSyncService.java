@@ -116,7 +116,11 @@ public class BadgeSyncService extends ListenerAdapter {
 	@Override
 	public void onGuildMemberUpdate(GuildMemberUpdateEvent event) {
 		if (event.getGuild().getIdLong() == guildId) {
-			push.set(event.getMember().getId(), badgesOf(event.getMember()));
+			List<String> badges = badgesOf(event.getMember());
+			// INFO on purpose: member updates are rare in a single guild, and this line is the
+			// only positive signal that gateway role changes actually reach the badge pipeline.
+			log.info("Member update for {} -> badges {}", event.getMember().getId(), badges);
+			push.set(event.getMember().getId(), badges);
 		}
 	}
 
