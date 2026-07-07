@@ -10,8 +10,7 @@ import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Role;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberRemoveEvent;
-import net.dv8tion.jda.api.events.guild.member.GuildMemberRoleAddEvent;
-import net.dv8tion.jda.api.events.guild.member.GuildMemberRoleRemoveEvent;
+import net.dv8tion.jda.api.events.guild.member.GuildMemberUpdateEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -106,14 +105,19 @@ public class BadgeSyncService extends ListenerAdapter {
 			.onError(e -> log.warn("Badge sweep failed to load guild members: {}", e.toString()));
 	}
 
+	/**
+	 * Role changes arrive as GUILD_MEMBER_UPDATE. We deliberately listen to the GENERIC member-update
+	 * event rather than {@code GuildMemberRoleAdd/RemoveEvent}: JDA only fires the role-diff events for
+	 * members already in its cache (see {@code GuildMemberUpdateHandler} — the uncached branch builds
+	 * the member from the payload and fires only this event), and with our lean VOICE member-cache
+	 * policy that's almost nobody. This event always fires and its member carries the fresh role list.
+	 * The push is idempotent, so re-pushing on unrelated member updates (nickname etc.) is harmless.
+	 */
 	@Override
-	public void onGuildMemberRoleAdd(GuildMemberRoleAddEvent event) {
-		onRolesChanged(event.getGuild(), event.getMember(), event.getRoles());
-	}
-
-	@Override
-	public void onGuildMemberRoleRemove(GuildMemberRoleRemoveEvent event) {
-		onRolesChanged(event.getGuild(), event.getMember(), event.getRoles());
+	public void onGuildMemberUpdate(GuildMemberUpdateEvent event) {
+		if (event.getGuild().getIdLong() == guildId) {
+			push.set(event.getMember().getId(), badgesOf(event.getMember()));
+		}
 	}
 
 	/** Covers integrations that assign mapped roles at join time; a plain join pushes nothing. */
@@ -130,23 +134,6 @@ public class BadgeSyncService extends ListenerAdapter {
 		if (event.getGuild().getIdLong() == guildId) {
 			push.set(event.getUser().getId(), List.of());
 		}
-	}
-
-	private void onRolesChanged(Guild guild, Member member, List<Role> changedRoles) {
-		if (guild.getIdLong() != guildId || !touchesMappedRole(changedRoles)) {
-			return;
-		}
-		push.set(member.getId(), badgesOf(member));
-	}
-
-	/** Ignore churn on unmapped roles — most role changes in a guild have nothing to do with badges. */
-	private boolean touchesMappedRole(List<Role> roles) {
-		for (Role role : roles) {
-			if (badgeByRoleId.containsKey(role.getIdLong())) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	private List<String> badgesOf(Member member) {
