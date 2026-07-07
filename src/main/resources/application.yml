@@ -8,7 +8,12 @@ spring:
 
 app:
   # Shared secret the API must send as the X-Internal-Token header. Blank = auth disabled (dev only).
+  # The same secret authenticates the bot's own badge pushes back to the API (BadgePushClient).
   internal-token: ${DISCORD_INTERNAL_TOKEN:}
+  api:
+    # Base URL of the osparty API for badge pushes (the reverse channel), e.g. http://10.0.0.1:8080.
+    # Blank disables badge sync entirely.
+    base-url: ${OSPARTY_API_URL:}
   discord:
     # Bot token — inject from the environment/secret store, NEVER commit it. Required to start.
     token: ${DISCORD_TOKEN:}
@@ -19,6 +24,15 @@ app:
     # Invite lifetime (seconds; default 24h) and max uses (0 = unlimited).
     invite-max-age-seconds: ${DISCORD_INVITE_MAX_AGE_SECONDS:86400}
     invite-max-uses: ${DISCORD_INVITE_MAX_USES:0}
+    # Guild roles that earn a client-visible badge next to party hosts (Discord snowflake ids,
+    # 0 = not mapped). Watched over the gateway (GUILD_MEMBER_UPDATE; needs the privileged
+    # GUILD_MEMBERS intent ticked in the Developer Portal) and swept fully at startup.
+    # See BadgeSyncService.
+    roles:
+      developer: ${DISCORD_ROLE_DEVELOPER:0}
+      content-creator: ${DISCORD_ROLE_CONTENT_CREATOR:0}
+      beta-tester: ${DISCORD_ROLE_BETA_TESTER:0}
+      backer: ${DISCORD_ROLE_BACKER:0}
 
 # Actuator on the same port; /actuator is exempt from the internal-token check (see InternalAuthFilter)
 # so Prometheus can scrape it. Only health + the Prometheus endpoint are exposed.
