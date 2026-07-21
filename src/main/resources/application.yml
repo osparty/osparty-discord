@@ -33,6 +33,11 @@ app:
       content-creator: ${DISCORD_ROLE_CONTENT_CREATOR:0}
       beta-tester: ${DISCORD_ROLE_BETA_TESTER:0}
       backer: ${DISCORD_ROLE_BACKER:0}
+      # Auto-grant the beta-tester role to every new human member once they accept the rules
+      # (Membership Screening pending -> member), or immediately on join if screening is off.
+      # Needs the beta-tester role id above, plus the bot's Manage Roles permission with its top
+      # role ranked above the beta-tester role. See roles/BetaTesterAutoAssigner.
+      beta-tester-auto-assign: ${DISCORD_ROLE_BETA_TESTER_AUTO_ASSIGN:true}
 
 # Actuator on the same port; /actuator is exempt from the internal-token check (see InternalAuthFilter)
 # so Prometheus can scrape it. Only health + the Prometheus endpoint are exposed.
