@@ -105,6 +105,31 @@ public class VoiceChannelManager {
 		}
 	}
 
+	/**
+	 * Rename an existing channel to match the party's current details — used when the host is transferred, since
+	 * the host name is the leading component of {@link #channelName}. Fire-and-forget ({@code queue()}); a missing
+	 * channel or failed edit is logged and otherwise ignored.
+	 */
+	public void rename(String channelId, PartyRef party) {
+		if (channelId == null || channelId.isBlank() || party == null) {
+			return;
+		}
+		try {
+			VoiceChannel channel = jda.getVoiceChannelById(channelId);
+			if (channel == null) {
+				log.debug("Discord channel {} not found; skipping rename for party {}", channelId, party.id());
+				return;
+			}
+			String name = channelName(party);
+			channel.getManager().setName(name).reason("OSParty host transfer").queue(
+				ok -> log.info("Renamed Discord voice channel {} to '{}' for party {}", channelId, name, party.id()),
+				err -> log.warn("Discord channel {} rename failed: {}", channelId, err.toString()));
+		}
+		catch (Exception e) {
+			log.warn("rename threw for channel {}: {}", channelId, e.toString());
+		}
+	}
+
 	public void delete(String channelId) {
 		if (channelId == null || channelId.isBlank()) {
 			return;

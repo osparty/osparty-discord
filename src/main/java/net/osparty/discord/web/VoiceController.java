@@ -6,6 +6,7 @@ import net.osparty.discord.voice.VoiceChannelManager.VoiceChannelInfo;
 import net.osparty.discord.web.dto.CreateChannelRequest;
 import net.osparty.discord.web.dto.CreateChannelResponse;
 import net.osparty.discord.web.dto.DiscordIdRequest;
+import net.osparty.discord.web.dto.PartyRef;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -68,6 +69,16 @@ public class VoiceController {
 		if (req != null && req.discordId() != null) {
 			voice.disconnectFromChannel(channelId, req.discordId());
 		}
+		return ResponseEntity.accepted().build();
+	}
+
+	/** Rename a channel to match the party's current host/details. Fire-and-forget -> 202. */
+	@PostMapping("/{channelId}/rename")
+	public ResponseEntity<Void> rename(@PathVariable String channelId, @RequestBody PartyRef party) {
+		if (party == null || party.id() == null) {
+			return ResponseEntity.badRequest().build();
+		}
+		voice.rename(channelId, party);
 		return ResponseEntity.accepted().build();
 	}
 
